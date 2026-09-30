@@ -200,8 +200,9 @@ pnpm install
 npx wrangler r2 bucket catalog enable <BUCKET>
 
 # 2. Streams (schemas from this repo)
-npx wrangler pipelines streams create ppn_datalake_silver_api_metrics --schema-file schema/silver.json
-npx wrangler pipelines streams create ppn_datalake_gold_api_metrics_daily --schema-file schema/gold.json
+# (--http-enabled false: rows arrive only through the Worker binding)
+npx wrangler pipelines streams create ppn_datalake_silver_api_metrics --schema-file schema/silver.json --http-enabled false
+npx wrangler pipelines streams create ppn_datalake_gold_api_metrics_daily --schema-file schema/gold.json --http-enabled false
 
 # 3. R2 Data Catalog sinks
 npx wrangler pipelines sinks create ppn_datalake_silver_sink --type r2-data-catalog \
@@ -210,9 +211,9 @@ npx wrangler pipelines sinks create ppn_datalake_gold_sink --type r2-data-catalo
   --bucket <BUCKET> --namespace gold --table api_metrics_daily --catalog-token <CATALOG_TOKEN>
 
 # 4. Connect stream → sink
-npx wrangler pipelines create silver-pipeline \
+npx wrangler pipelines create ppn_datalake_silver_pipeline \
   --sql "INSERT INTO ppn_datalake_silver_sink SELECT * FROM ppn_datalake_silver_api_metrics"
-npx wrangler pipelines create gold-pipeline \
+npx wrangler pipelines create ppn_datalake_gold_pipeline \
   --sql "INSERT INTO ppn_datalake_gold_sink SELECT * FROM ppn_datalake_gold_api_metrics_daily"
 
 # 5. Table maintenance
