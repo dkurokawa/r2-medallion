@@ -1,0 +1,78 @@
+# r2-medallion — R2 api-metrics bronze -> silver/gold (Pipelines + R2 Data
+# Catalog). Internal batch Worker: no public HTTP API, cron-driven,
+# with a bearer-token-gated admin endpoint (/run, /status). workers.dev is
+# fine per the frozen design — no custom domain/route needed.
+name = "ppn-datalake-r2-medallion"
+main = "src/index.ts"
+compatibility_date = "2025-01-01"
+compatibility_flags = ["nodejs_compat"]
+workers_dev = true
+
+[triggers]
+# 毎日 01:00 UTC。前日 (UTC) 分の api-metrics/<dt>/ が出そろっている前提。
+# 02:00 UTC はヘルスチェック（ワークフローが manifest を書かずに終わった
+# 日を検知して Discord に通知する — src/index.ts の HEALTH_CHECK_CRON）。
+crons = ["0 1 * * *", "0 2 * * *"]
+
+[[r2_buckets]]
+binding = "DATALAKE_R2"
+bucket_name = "ppn-datalake-bronze"
+
+[[workflows]]
+name = "ppn-datalake-r2-medallion-day"
+binding = "MEDALLION_WORKFLOW"
+class_name = "MedallionDayWorkflow"
+
+# Cloudflare Pipelines stream bindings. Field name is `stream` (current as of
+# the 2026-05-27 rename; the old `pipeline` field is deprecated but still
+# accepted) — see README.md "Documented vs. not verified". These stream names must exist
+# already (one-time setup, see README "Setup") — this repo does not create
+# Cloudflare account state.
+[[pipelines]]
+binding = "SILVER_STREAM"
+stream = "<SILVER_STREAM_ID>"  # ppn_datalake_silver_api_metrics
+[[pipelines]]
+binding = "GOLD_STREAM"
+stream = "<GOLD_STREAM_ID>"  # ppn_datalake_gold_api_metrics_daily
+[vars]
+ENVIRONMENT = "production"
+# Cloudflare account id — used only to build the R2 SQL REST endpoint URL
+# (`.../accounts/<id>/r2-sql/query/<bucket>`) for the `verify` workflow step.
+# Not a secret (an account id alone grants no access) — see src/lib/r2sql.ts.
+# Same account as the pipeline stream ids above (`wrangler whoami`).
+R2_SQL_ACCOUNT_ID = "<CLOUDFLARE_ACCOUNT_ID>"
+
+# A `chunk-<n>` Workflow step issues up to ~2000 R2 get() subrequests (plus
+# the list() calls and stream send() batches). Cloudflare's default
+# subrequest budget per invocation is far below that, so it must be raised
+# explicitly. 100000 leaves headroom over the observed daily max (32,557
+# objects/day as of 2026-09, all inside a single chunk in the worst case a
+# single service dominates the day).
+[limits]
+subrequests = 100000
+
+[env.development]
+name = "ppn-datalake-r2-medallion-dev"
+workers_dev = true
+
+[[env.development.r2_buckets]]
+binding = "DATALAKE_R2"
+bucket_name = "ppn-datalake-bronze"
+
+[[env.development.workflows]]
+name = "ppn-datalake-r2-medallion-day-dev"
+binding = "MEDALLION_WORKFLOW"
+class_name = "MedallionDayWorkflow"
+
+[[env.development.pipelines]]
+binding = "SILVER_STREAM"
+stream = "<SILVER_STREAM_ID>"  # ppn_datalake_silver_api_metrics
+[[env.development.pipelines]]
+binding = "GOLD_STREAM"
+stream = "<GOLD_STREAM_ID>"  # ppn_datalake_gold_api_metrics_daily
+[env.development.vars]
+ENVIRONMENT = "development"
+R2_SQL_ACCOUNT_ID = "<CLOUDFLARE_ACCOUNT_ID>"
+
+[env.development.limits]
+subrequests = 100000

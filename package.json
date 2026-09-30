@@ -1,0 +1,23 @@
+{
+  "name": "r2-medallion",
+  "version": "0.1.0",
+  "description": "Cloudflare Workflow that turns the R2 `api-metrics` bronze JSONL into silver/gold Iceberg tables via Pipelines + R2 Data Catalog.",
+  "type": "module",
+  "private": true,
+  "license": "MIT",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "build": "wrangler deploy --dry-run",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260930.2",
+    "@vitest/coverage-v8": "^3.2.0",
+    "typescript": "^5.4.0",
+    "vitest": "^3.2.0",
+    "wrangler": "^4.130.0"
+  },
+  "packageManager": "pnpm@9.15.0"
+}

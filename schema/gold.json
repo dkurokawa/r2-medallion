@@ -1,0 +1,21 @@
+{
+  "fields": [
+    { "name": "dt", "type": "string", "required": true },
+    { "name": "service", "type": "string", "required": true },
+    { "name": "endpoint", "type": "string", "required": true },
+    { "name": "method", "type": "string", "required": true },
+    { "name": "requests", "type": "int32", "required": true },
+    { "name": "errors_4xx", "type": "int32", "required": true },
+    { "name": "errors_5xx", "type": "int32", "required": true },
+    { "name": "error_rate", "type": "float64", "required": true },
+    { "name": "requests_measured", "type": "int32", "required": true },
+    { "name": "requests_zero_latency", "type": "int32", "required": true },
+    { "name": "latency_p50", "type": "float64", "required": false },
+    { "name": "latency_p95", "type": "float64", "required": false },
+    { "name": "latency_p99", "type": "float64", "required": false },
+    { "name": "latency_avg", "type": "float64", "required": false },
+    { "name": "latency_max", "type": "float64", "required": false },
+    { "name": "colos", "type": "string", "required": true },
+    { "name": "row_uid", "type": "string", "required": true }
+  ]
+}

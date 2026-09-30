@@ -1,0 +1,20 @@
+{
+  "fields": [
+    { "name": "ts", "type": "timestamp", "required": true },
+    { "name": "dt", "type": "string", "required": true },
+    { "name": "service", "type": "string", "required": true },
+    { "name": "endpoint", "type": "string", "required": true },
+    { "name": "method", "type": "string", "required": true },
+    { "name": "status", "type": "int32", "required": true },
+    { "name": "status_class", "type": "string", "required": true },
+    { "name": "latency_ms", "type": "float64", "required": true },
+    { "name": "request_size", "type": "float64", "required": false },
+    { "name": "response_size", "type": "float64", "required": false },
+    { "name": "user_id", "type": "string", "required": false },
+    { "name": "cf_ray", "type": "string", "required": false },
+    { "name": "cf_colo", "type": "string", "required": false },
+    { "name": "error_message", "type": "string", "required": false },
+    { "name": "source_key", "type": "string", "required": true },
+    { "name": "row_uid", "type": "string", "required": true }
+  ]
+}
