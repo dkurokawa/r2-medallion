@@ -9,9 +9,9 @@ compatibility_flags = ["nodejs_compat"]
 workers_dev = true
 
 [triggers]
-# 毎日 01:00 UTC。前日 (UTC) 分の api-metrics/<dt>/ が出そろっている前提。
-# 02:00 UTC はヘルスチェック（ワークフローが manifest を書かずに終わった
-# 日を検知して Discord に通知する — src/index.ts の HEALTH_CHECK_CRON）。
+# Daily at 01:00 UTC, assuming the previous (UTC) day's api-metrics/<dt>/ is complete.
+# 02:00 UTC is the health check (detects a day where the workflow ended without
+# writing a manifest and notifies Discord — HEALTH_CHECK_CRON in src/index.ts).
 crons = ["0 1 * * *", "0 2 * * *"]
 
 [[r2_buckets]]

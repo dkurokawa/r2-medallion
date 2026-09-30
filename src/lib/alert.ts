@@ -1,47 +1,47 @@
 /**
- * Discord アラート — `MedallionDayWorkflow` の日次処理が「悪い形」で終わった
- * とき（`verify.error` / `status !== 'done'` / manifest そのものが無い）に
- * 気づけるようにする。POST `{ content }` の Discord webhook。
+ * Discord alerts — surface a `MedallionDayWorkflow` day that ended badly
+ * (`verify.error` / `status !== 'done'` / no manifest at all). Posts
+ * `{ content }` to a Discord webhook.
  *
- * 呼び出し元は2つ:
- *  - `workflow.ts` の `alert` ステップ（`verify` ステップ直後、その日の実行内）
- *  - `index.ts` の health-check cron（`verify` ステップ自体が一度も走らなかった
- *    ＝ワークフローが完了しなかった日を、manifest の不在で検知する）
+ * Two callers:
+ *  - the `alert` step in `workflow.ts` (right after `verify`, inside that day's run)
+ *  - the health-check cron in `index.ts` (catches days where `verify` never ran,
+ *    i.e. the workflow did not complete, by the manifest being absent)
  */
 
 import type { Manifest, ManifestVerify } from './manifest';
 
 /**
- * `manifest` から人が読める問題点の一覧を返す。純粋関数（I/O なし）。
- * 問題が無ければ空配列。
+ * Returns a human-readable list of problems in `manifest`. Pure (no I/O).
+ * Empty when there is nothing wrong.
  */
 export function manifestProblems(m: Manifest | null): string[] {
   if (m === null) {
-    return ['manifest が存在しない（workflow が完了していない可能性がある）'];
+    return ['manifest is missing (the workflow may not have completed)'];
   }
 
   const problems: string[] = [];
 
   if (m.status !== 'done') {
-    problems.push(`status が ${m.status}`);
+    problems.push(`status is ${m.status}`);
   }
 
   const verify: ManifestVerify | undefined = m.verify;
   if (!verify) {
-    problems.push('verify が実行されていない');
+    problems.push('verify has not run');
   } else if ('error' in verify) {
-    problems.push(`verify がエラー: ${verify.error}`);
+    problems.push(`verify failed: ${verify.error}`);
   } else if ('skipped' in verify) {
-    problems.push(`verify がスキップされた: ${verify.skipped}`);
+    problems.push(`verify was skipped: ${verify.skipped}`);
   }
 
   return problems;
 }
 
-// Discord の上限は 2000 文字。それに対して余裕を持たせた切り詰め先。
+// Discord caps messages at 2000 characters; truncate with some headroom.
 const TRUNCATE_TO = 1900;
 
-/** Discord に投げる本文を組み立てる。長さは常に `TRUNCATE_TO` 以下に切り詰める。 */
+/** Builds the Discord message body, always truncated to at most `TRUNCATE_TO`. */
 export function formatAlert(
   dt: string,
   source: 'workflow' | 'health-check',
@@ -50,18 +50,18 @@ export function formatAlert(
   const lines = [
     `:rotating_light: **r2-medallion dt=${dt}** (${source})`,
     ...problems.map((p) => `- ${p}`),
-    `確認: GET /status?dt=${dt} / scripts/dedupe_day.py verify-all`,
+    `check: GET /status?dt=${dt} / scripts/dedupe_day.py verify-all`,
   ];
   const content = lines.join('\n');
   return content.length > TRUNCATE_TO ? content.slice(0, TRUNCATE_TO) : content;
 }
 
 /**
- * Discord webhook へ通知する。**throw しない** — webhook 未設定・fetch 失敗
- * いずれも `false` を返すだけで、呼び出し元（workflow の `alert` ステップ /
- * health-check cron）の処理を止めない。`console.error` は webhook の有無に
- * 関わらず必ず先に呼ぶので、webhook が未設定の環境でも Workers のログには
- * 残る。webhook URL 自体はログに出さない。
+ * Sends a notification to the Discord webhook. **Never throws** — a missing
+ * webhook or a failed fetch just returns `false`, so the caller (the workflow's
+ * `alert` step / the health-check cron) keeps going. `console.error` is always
+ * called first regardless, so the problem reaches Workers logs even without a
+ * webhook. The webhook URL itself is never logged.
  */
 export async function notifyDiscord(
   webhookUrl: string | undefined,
@@ -76,8 +76,8 @@ export async function notifyDiscord(
     const res = await fetchImpl(webhookUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      // 本文には R2 SQL のエラー文など外から来る文字列が入るので、`@everyone` 等が
-      // 混ざってもメンションとして展開させない。
+      // The body contains external strings (e.g. R2 SQL error messages), so make
+      // sure `@everyone` and friends are never expanded as mentions.
       body: JSON.stringify({ content, allowed_mentions: { parse: [] } }),
     });
     return res.ok;

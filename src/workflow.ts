@@ -216,7 +216,7 @@ export async function runChunk(
     }
   }
 
-  // Ordering matters (design brief: "send を各ステップの最後の動作にする").
+  // Ordering matters (design rule: `send()` is the last action of each step).
   // The quarantine write is an idempotent R2 `put` at a fixed key — a retry
   // overwrites it with identical content, so redoing it on step retry is
   // harmless. The stream `send()` calls inside sendRowsResumable are NOT

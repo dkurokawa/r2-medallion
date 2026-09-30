@@ -1,36 +1,41 @@
-"""silver / gold に入った重複行を、その日だけ書き換えて実際に消す。
+"""Remove duplicate rows from silver / gold by rewriting a single day.
 
-Pipelines の `send()` は、サーバーが受け取っていてもエラーを返すことがある
-（at-least-once）。こちらは「送れなかった」と判断して再送するので、まれに同じ
-行が 2 度入る（240 日の取り込みで 1 日ぶん）。R2 SQL は読み取り専用で消せない
-ので、Iceberg のテーブルを PyIceberg から直接書き換える。
+A retried Workflow step can re-send rows that Pipelines already accepted
+(at-least-once delivery), so the same row occasionally lands twice (see README
+"Design decisions §6"). R2 SQL is read-only and cannot delete, so this script
+rewrites the Iceberg table directly with PyIceberg.
 
-`row_uid`（= 元の R2 オブジェクトのキー + 行番号）ごとに 1 行だけ残し、その日の
-行を丸ごと置き換える。失敗しても bronze は無傷なので、
-`POST /run?dt=<dt>&attempt=<n>&force=1` でその日を作り直せる。
+It keeps one row per `row_uid` (= source R2 object key + line number) and replaces
+that day's rows wholesale. If anything goes wrong, bronze is untouched, so the day
+can be rebuilt with `POST /run?dt=<dt>&attempt=<n>&force=1`.
 
-**1 日だけ指定しても、他の日のファイルまで書き換わる。** テーブルの実ファイルは
-取り込み日（`__ingest_ts`）ごとに分かれていて `dt` では分かれていない。backfill の
-240 日ぶんは 1 ファイルに入っているので、`dedupe` はそのファイルごと書き直す。
-行の中身は変わらないはずだが、**`dedupe` の後は必ず `verify-all` を実行する。**
+**Targeting one day still rewrites other days' files.** The table's data files are
+split by ingest time (`__ingest_ts`), not by `dt`; the 240-day backfill sits in a
+single file, so `dedupe` rewrites that whole file. Row contents should not change,
+but **always run `verify-all` after `dedupe`.**
 
-準備（初回のみ。リポジトリ外に venv を作る）:
-    python3 -m venv ~/.venvs/iceberg
-    ~/.venvs/iceberg/bin/pip install "pyiceberg[pyarrow,pyiceberg-core]"
+Setup (once; creates a venv inside the repo, which is git-ignored):
+    python3 -m venv .venv
+    .venv/bin/pip install "pyiceberg[pyarrow,pyiceberg-core]"
 
-使い方:
-    ~/.venvs/iceberg/bin/python scripts/dedupe_day.py scan-all [silver|gold]      # 重複のある日を探す
-    ~/.venvs/iceberg/bin/python scripts/dedupe_day.py count <dt> [silver|gold]    # その日を数える
-    ~/.venvs/iceberg/bin/python scripts/dedupe_day.py dedupe <dt> [silver|gold]   # 実際に消す
-    ~/.venvs/iceberg/bin/python scripts/dedupe_day.py verify-all                  # 両層の全日を manifest と照合
+Usage:
+    .venv/bin/python scripts/dedupe_day.py scan-all [silver|gold]      # find days with duplicates
+    .venv/bin/python scripts/dedupe_day.py count <dt> [silver|gold]    # count one day
+    .venv/bin/python scripts/dedupe_day.py dedupe <dt> [silver|gold]   # actually remove them
+    .venv/bin/python scripts/dedupe_day.py verify-all                  # check every day of both layers against its manifest
 
-層を省くと silver。gold も同じ `row_uid` の仕組みで重複する（1 日を流し直すと
-silver・gold の両方に同じ行がもう一度入る）。
+The layer defaults to silver. gold duplicates through the same `row_uid` mechanism
+(re-running a day re-inserts the same rows into both silver and gold).
 
-トークンは `$R2_CATALOG_TOKEN_FILE`（既定 `~/.config/r2-medallion/r2-catalog-token`）（R2 Data Catalog + R2 Storage の権限）
-から読む。`verify-all` は Worker の `GET /status` で manifest を取るので、
-`$ADMIN_TOKEN_FILE`（既定 `~/.config/r2-medallion/admin-token`、Worker の ADMIN_TOKEN）も使う。
-どちらも画面には出さない。
+Environment:
+    CF_ACCOUNT_ID           Cloudflare account id
+    WORKER_URL              the deployed Worker's URL (for `verify-all`)
+    R2_CATALOG_TOKEN_FILE   file holding an API token with R2 Data Catalog + R2 Storage
+                            permissions (default ~/.config/r2-medallion/r2-catalog-token)
+    ADMIN_TOKEN_FILE        file holding the Worker's ADMIN_TOKEN, used by `verify-all`
+                            to fetch manifests via GET /status
+                            (default ~/.config/r2-medallion/admin-token)
+Tokens are read from files and never printed.
 """
 
 import collections
@@ -49,7 +54,7 @@ TOKEN_PATH = pathlib.Path(os.environ.get("R2_CATALOG_TOKEN_FILE", pathlib.Path.h
 ADMIN_TOKEN_PATH = pathlib.Path(os.environ.get("ADMIN_TOKEN_FILE", pathlib.Path.home() / ".config/r2-medallion/admin-token"))
 WORKER_URL = os.environ["WORKER_URL"]
 
-# 層 → (namespace, table, その層の行数を持つ manifest のキー)
+# layer → (namespace, table, manifest key holding that layer's row count)
 LAYERS = {
     "silver": ("silver", "api_metrics", "silverRows"),
     "gold": ("gold", "api_metrics_daily", "goldRows"),
@@ -85,7 +90,7 @@ def per_day_counts(table) -> dict[str, tuple[int, int]]:
 def fetch_manifest(dt: str, admin_token: str) -> dict | None:
     req = urllib.request.Request(
         f"{WORKER_URL}/status?dt={dt}",
-        # 既定の User-Agent（Python-urllib）は Cloudflare に 403 で弾かれる。
+        # The default User-Agent (Python-urllib) gets a 403 from Cloudflare.
         headers={"Authorization": f"Bearer {admin_token}", "User-Agent": "r2-medallion-dedupe"},
     )
     try:
@@ -111,7 +116,7 @@ def cmd_scan_all(layer: str) -> None:
 
 
 def cmd_verify_all() -> None:
-    """両層の日ごとの行数を、その日の manifest（Workflow が送ったつもりの行数）と突き合わせる。"""
+    """Compare each day's row counts in both layers with that day's manifest (what the Workflow meant to send)."""
     per = {layer: per_day_counts(load_table(layer)) for layer in LAYERS}
     admin_token = ADMIN_TOKEN_PATH.read_text().strip()
     bad, no_manifest = [], []
@@ -127,11 +132,11 @@ def cmd_verify_all() -> None:
                 bad.append((layer, dt, rows, distinct, want))
     for layer, counts in per.items():
         print(f"{layer}: days={len(counts)} rows={sum(c[0] for c in counts.values())}")
-    print(f"manifest との不一致: {len(bad)} 件")
+    print(f"mismatches against manifest: {len(bad)}")
     for layer, dt, rows, distinct, want in bad:
         print(f"  {layer} {dt}: table rows={rows} distinct={distinct} / manifest={want}")
     if no_manifest:
-        print(f"manifest が無い日: {no_manifest}")
+        print(f"days without a manifest: {no_manifest}")
     if bad or no_manifest:
         sys.exit(1)
 
@@ -141,11 +146,11 @@ def cmd_dedupe(dt: str, layer: str) -> None:
     before_rows, before_distinct = day_counts(table, dt)
     print(f"before: rows={before_rows} distinct={before_distinct} dup={before_rows - before_distinct}")
     if before_rows == before_distinct:
-        print("重複なし。何もしない。")
+        print("no duplicates; nothing to do.")
         return
 
     full = table.scan(row_filter=f"dt == '{dt}'").to_arrow()
-    # 重複行は中身がまったく同じなので、row_uid ごとに最初の1行を残せばよい。
+    # Duplicate rows are byte-identical, so keeping the first row per row_uid is enough.
     seen: set[str] = set()
     keep: list[int] = []
     for i, uid in enumerate(full.column("row_uid").to_pylist()):
@@ -154,15 +159,15 @@ def cmd_dedupe(dt: str, layer: str) -> None:
         seen.add(uid)
         keep.append(i)
     deduped = full.take(keep)
-    print(f"書き戻す行数: {deduped.num_rows}")
+    print(f"rows to write back: {deduped.num_rows}")
 
-    # その日の行だけを置き換える（ファイルは他の日ごと書き直される。上の docstring 参照）。
+    # Replace only this day's rows (the file is rewritten with other days in it; see the docstring).
     table.overwrite(deduped, overwrite_filter=f"dt == '{dt}'")
 
     after_rows, after_distinct = day_counts(load_table(layer), dt)
     print(f"after: rows={after_rows} distinct={after_distinct} dup={after_rows - after_distinct}")
     if after_rows != before_distinct:
-        sys.exit(f"!! 期待した行数 {before_distinct} と違う（{after_rows}）。その日を作り直すこと。")
+        sys.exit(f"!! expected {before_distinct} rows, got {after_rows}. Rebuild this day.")
 
 
 def main() -> None:

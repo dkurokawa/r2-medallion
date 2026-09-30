@@ -72,13 +72,13 @@ describe('manifestProblems', () => {
 describe('formatAlert', () => {
   it('contains dt, source, and each problem', () => {
     const content = formatAlert('2026-09-21', 'workflow', [
-      'status が mismatch',
-      'verify がエラー: x',
+      'status is mismatch',
+      'verify failed: x',
     ]);
     expect(content).toContain('2026-09-21');
     expect(content).toContain('workflow');
-    expect(content).toContain('status が mismatch');
-    expect(content).toContain('verify がエラー: x');
+    expect(content).toContain('status is mismatch');
+    expect(content).toContain('verify failed: x');
   });
 
   it('is truncated to at most 1900 chars for huge input', () => {

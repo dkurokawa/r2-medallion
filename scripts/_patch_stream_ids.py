@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
-"""`wrangler pipelines streams list` の出力を標準入力で受け、wrangler.toml の
-stream ID を書き戻す。rebuild-tables.sh の 4/5 で使う。
+"""Read `wrangler pipelines streams list` output on stdin and write the stream
+ids back into wrangler.toml. Used by step 4/5 of rebuild-tables.sh.
 
-別ファイルにしてあるのは、スクリプト本体をヒアドキュメントで渡すと標準入力が
-そちらに奪われ、パイプで渡した list の出力が読めないため（2026-09-23 に実際に
-踏んだ）。
+This is a separate file because passing the script as a heredoc would consume
+stdin, leaving the piped `list` output unreadable (hit on 2026-09-23).
 """
 import pathlib
 import re
@@ -23,16 +22,16 @@ def main() -> None:
 
     missing = [n for n in NEED if n not in ids]
     if missing:
-        sys.exit(f"!! stream の ID を取れませんでした: {missing}")
+        sys.exit(f"!! could not find stream ids for: {missing}")
 
-    # wrangler.toml の各 stream 行は `stream = "<id>"  # <stream 名>` の形。
-    # 名前のコメントが目印なので、無ければ書き換えずに止める（黙って壊さない）。
+    # Each stream line in wrangler.toml looks like `stream = "<id>"  # <stream name>`.
+    # The name comment is the anchor; if it is missing, stop instead of silently breaking the file.
     p = pathlib.Path("wrangler.toml")
     s = p.read_text(encoding="utf-8")
     for name in NEED:
         pat = re.compile(r'^stream = "[^"]*"\s*#\s*' + re.escape(name) + r"\s*$", re.M)
         if not pat.search(s):
-            sys.exit(f"!! wrangler.toml に '# {name}' 付きの stream 行がありません。手で直してください。")
+            sys.exit(f"!! wrangler.toml has no stream line tagged '# {name}'. Fix it by hand.")
         s = pat.sub(f'stream = "{ids[name]}"  # {name}', s)
     p.write_text(s, encoding="utf-8")
     for name in NEED:

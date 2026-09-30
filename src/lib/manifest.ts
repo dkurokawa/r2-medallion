@@ -1,14 +1,14 @@
 export interface ManifestAssertions {
-  /** bronze の全 JSONL 行数 == silver 行数 + quarantine 行数. */
+  /** total bronze JSONL lines == silver rows + quarantined rows. */
   linesEqualsSilverPlusQuarantine: boolean;
-  /** silver 行数 == gold の requests 合計. */
+  /** silver rows == sum of gold `requests`. */
   silverEqualsGoldRequests: boolean;
   /**
-   * `list` ステップが列挙した bronze オブジェクト数 == 実際に `get()` で読めた
-   * オブジェクト数、かつ欠落 0 件。R2 の `get()` が `null` を返す（オブジェクトが
-   * 存在しなかった）ケースを黙って空文字列として扱うと、その行が「存在しない
-   * ものとして」扱われ、他の2つの突き合わせ式は無事に成立したまま bronze の
-   * 一部が静かに失われる — この assertion はその欠落を検知する。
+   * bronze objects enumerated by the `list` step == objects actually read with
+   * `get()`, with zero missing. If a `get()` returning `null` (object gone) were
+   * silently treated as an empty body, its rows would simply not exist, the other
+   * two equations would still hold, and part of bronze would be lost without a
+   * trace — this assertion is what catches that.
    */
   objectsListedEqualsRead: boolean;
   /**
