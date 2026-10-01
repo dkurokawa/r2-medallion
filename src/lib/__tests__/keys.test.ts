@@ -5,6 +5,7 @@ import {
   instanceIdFor,
   isoDateOffsetDays,
   isValidAttempt,
+  isValidDt,
   isValidForce,
   isValidRunId,
   manifestKey,
@@ -78,6 +79,28 @@ describe('instanceIdFor', () => {
       instanceIdFor('2026-09-21', '3'),
     ]);
     expect(ids.size).toBe(4);
+  });
+});
+
+describe('isValidDt', () => {
+  it('accepts real calendar dates, including a leap day', () => {
+    expect(isValidDt('2026-09-21')).toBe(true);
+    expect(isValidDt('2028-02-29')).toBe(true);
+  });
+
+  it('rejects absent or malformed values', () => {
+    expect(isValidDt(null)).toBe(false);
+    expect(isValidDt('')).toBe(false);
+    expect(isValidDt('2026-9-21')).toBe(false);
+    expect(isValidDt('2026-09-21T00:00:00Z')).toBe(false);
+  });
+
+  it('rejects dates that have the right shape but do not exist', () => {
+    expect(isValidDt('2026-02-29')).toBe(false);
+    expect(isValidDt('2026-02-30')).toBe(false);
+    expect(isValidDt('2026-04-31')).toBe(false);
+    expect(isValidDt('2026-13-01')).toBe(false);
+    expect(isValidDt('2026-00-10')).toBe(false);
   });
 });
 
