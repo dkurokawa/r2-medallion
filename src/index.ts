@@ -29,6 +29,7 @@ import { formatAlert, manifestProblems, notifyDiscord } from './lib/alert';
 import {
   instanceIdFor,
   isValidAttempt,
+  isValidDt,
   isValidForce,
   manifestKey,
   parseForce,
@@ -41,7 +42,6 @@ export const HEALTH_CHECK_CRON = '0 2 * * *';
 
 export { MedallionDayWorkflow } from './workflow';
 
-const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -56,7 +56,7 @@ async function handleRun(request: Request, env: Env): Promise<Response> {
   }
   const url = new URL(request.url);
   const dt = url.searchParams.get('dt');
-  if (!dt || !DATE_RE.test(dt)) {
+  if (!isValidDt(dt)) {
     return json({ ok: false, error: 'query ?dt=YYYY-MM-DD required' }, 400);
   }
   const attempt = url.searchParams.get('attempt');
@@ -106,7 +106,7 @@ async function handleStatus(request: Request, env: Env): Promise<Response> {
   }
   const url = new URL(request.url);
   const dt = url.searchParams.get('dt');
-  if (!dt || !DATE_RE.test(dt)) {
+  if (!isValidDt(dt)) {
     return json({ ok: false, error: 'query ?dt=YYYY-MM-DD required' }, 400);
   }
   const obj = await env.DATALAKE_R2.get(manifestKey(dt));

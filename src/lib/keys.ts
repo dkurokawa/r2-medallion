@@ -55,6 +55,22 @@ export function yesterdayUTC(now: Date = new Date()): string {
   return isoDateOffsetDays(now, -1);
 }
 
+const DT_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * True if `dt` (a raw `?dt=` query-string value, or null when absent) is a
+ * real UTC calendar date in YYYY-MM-DD form. The shape alone isn't enough:
+ * `2026-02-30` or `2026-13-45` would otherwise create a real Workflow
+ * instance (`day-2026-02-30`) that processes an empty prefix and writes a
+ * manifest for a day that doesn't exist. Round-tripping through `Date`
+ * rejects those, since JS rolls an out-of-range day into the next month.
+ */
+export function isValidDt(dt: string | null): dt is string {
+  if (dt === null || !DT_RE.test(dt)) return false;
+  const d = new Date(`${dt}T00:00:00Z`);
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === dt;
+}
+
 const ATTEMPT_RE = /^[1-9]\d*$/;
 
 /**
