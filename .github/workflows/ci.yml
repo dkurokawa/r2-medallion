@@ -13,6 +13,7 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
+          check-latest: true
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
       - run: pnpm test
